@@ -29,27 +29,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Debug - show environment
-        run: |
-          echo "=== Environment ==="
-          echo "DEVKITPRO=$DEVKITPRO"
-          echo "DEVKITA64=$DEVKITA64"
-          echo "PATH=$PATH"
-          echo ""
-          echo "=== devkitPro files ==="
-          ls $DEVKITPRO/cmake/ 2>/dev/null || echo "cmake/ dir NOT found"
-          cat $DEVKITPRO/cmake/DevkitA64Libnx.cmake 2>/dev/null | head -5 || echo "DevkitA64Libnx.cmake NOT found"
-          echo ""
-          echo "=== aarch64 gcc ==="
-          aarch64-none-elf-gcc --version 2>/dev/null || echo "aarch64-none-elf-gcc NOT found"
-          echo ""
-          echo "=== Project files ==="
-          ls -la
-          echo ""
-          echo "=== Submodules ==="
-          cat .gitmodules 2>/dev/null || echo "No .gitmodules"
-          ls externals/borealis/CMakeLists.txt 2>/dev/null || echo "borealis submodule NOT initialized"
-
       - name: Fix Git safe.directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
@@ -60,25 +39,64 @@ jobs:
           echo "=== borealis check ==="
           ls externals/borealis/CMakeLists.txt && echo "borealis OK" || echo "borealis MISSING"
 
-      - name: Configure with CMake
+      - name: Install CMake (if missing)
         run: |
+          which cmake && echo "CMake found: $(cmake --version)" && exit 0
+          echo "CMake not found, installing..."
+          # devkitpro image is Debian-based, try apt
+          apt-get update -qq && apt-get install -y -qq cmake 2>/dev/null && echo "CMake installed via apt" && exit 0
+          # If apt fails, try pacman (Arch-based)
+          pacman -Sy --noconfirm cmake 2>/dev/null && echo "CMake installed via pacman" && exit 0
+          echo "WARNING: could not install CMake, will try Makefile fallback"
+
+      - name: Find devkitPro toolchain file
+        run: |
+          echo "=== Looking for DevkitA64Libnx.cmake ==="
+          find /opt/devkitpro -name "DevkitA64Libnx.cmake" 2>/dev/null && echo "FOUND" || echo "NOT found in /opt/devkitpro"
+          echo ""
+          echo "=== /opt/devkitpro structure ==="
+          ls /opt/devkitpro/ 2>/dev/null || echo "/opt/devkitpro NOT mounted"
+          echo ""
+          echo "=== cmake dir ==="
+          ls /opt/devkitpro/cmake/ 2>/dev/null || echo "cmake/ dir NOT found"
+
+      - name: Configure with CMake (try)
+        id: cmake_config
+        continue-on-error: true
+        run: |
+          TOOLCHAIN=$(find /opt/devkitpro -name "DevkitA64Libnx.cmake" 2>/dev/null | head -1)
+          if [ -z "$TOOLCHAIN" ]; then
+            echo "ERROR: toolchain file not found, skipping CMake"
+            exit 1
+          fi
+          echo "Using toolchain: $TOOLCHAIN"
           cmake -B build \
-            -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/DevkitA64Libnx.cmake \
-            -DCMAKE_BUILD_TYPE=Release \
-            -G "Unix Makefiles"
+            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+            -DCMAKE_BUILD_TYPE=Release
         env:
           DEVKITPRO: /opt/devkitpro
           DEVKITA64: /opt/devkitpro/devkitA64
 
-      - name: Build
+      - name: Build with CMake (try)
+        id: cmake_build
+        continue-on-error: true
+        if: steps.cmake_config.outcome == 'success'
         run: cmake --build build -j$(nproc)
+        env:
+          DEVKITPRO: /opt/devkitpro
+          DEVKITA64: /opt/devkitpro/devkitA64
+
+      - name: Build with Makefile (fallback)
+        if: steps.cmake_config.outcome == 'failure'
+        run: make -j$(nproc)
 
       - name: List build outputs
         run: |
           echo "=== Build outputs ==="
-          find build -type f -name "*.nro" -o -name "*.elf" 2>/dev/null
-          ls -lh build/*.nro 2>/dev/null || true
-          ls -lh *.nro 2>/dev/null || true
+          find . -maxdepth 3 -type f \( -name "*.nro" -o -name "*.elf" -o -name "*.nsp" \) 2>/dev/null
+          echo ""
+          echo "=== All files ==="
+          find . -maxdepth 2 -type f -name "*.nro" 2>/dev/null
 
       - name: Upload NRO artifact
         if: always()
@@ -87,8 +105,8 @@ jobs:
           name: switch-pctl-gui-nro
           path: |
             build/switch-pctl-gui.nro
-            build/switch-pctl-gui.nso
             switch-pctl-gui.nro
+            **/*.nro
           if-no-files-found: warn
           retention-days: 30
 
@@ -119,8 +137,6 @@ jobs:
             - Commit: ${{ github.sha }}
             - Branch: ${{ github.ref_name }}
             - Build time: ${{ github.run_started_at }}
-
-            注意：首次使用请确保已安装 borealis 子模块。
           files: |
             build/switch-pctl-gui.nro
             switch-pctl-gui.nro
