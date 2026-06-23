@@ -17,6 +17,20 @@ jobs:
       with:
         submodules: recursive
 
+    - name: Debug container layout
+      run: |
+        echo "=== /opt ==="
+        ls /opt/ || true
+        echo "=== /opt/devkitpro ==="
+        ls /opt/devkitpro/ || true
+        echo "=== cmake dir ==="
+        find /opt -name "*.cmake" 2>/dev/null | head -20 || true
+        echo "=== which cmake make aarch64-none-elf-g++ ==="
+        which cmake || true
+        which make || true
+        which aarch64-none-elf-g++ || true
+        which aarch64-none-elf-gcc || true
+
     - name: Install CMake + make
       run: |
         apt-get update -qq
@@ -24,28 +38,17 @@ jobs:
         cmake --version
         make --version
 
-    - name: Show devkitPro layout
+    - name: Configure
       run: |
-        . /etc/profile.d/devkitpro.sh || true
-        echo "DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}"
-        ls /opt/devkitpro/cmake/
-
-    - name: Configure with CMake
-      run: |
-        . /etc/profile.d/devkitpro.sh || true
-        export DEVKITPRO=/opt/devkitpro
-        TOOLCHAIN=${DEVKITPRO}/cmake/devkitA64.cmake
-        echo "Toolchain: ${TOOLCHAIN}"
+        TOOLCHAIN=$(find /opt -name "devkitA64.cmake" 2>/dev/null | head -1)
+        echo "Toolchain: ${TOOLCHAIN:-NOT FOUND}"
         cmake -B build \
           -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN} \
           -DCMAKE_BUILD_TYPE=Release \
           -G "Unix Makefiles"
 
     - name: Build
-      run: |
-        . /etc/profile.d/devkitpro.sh || true
-        export DEVKITPRO=/opt/devkitpro
-        cmake --build build --config Release -j$(nproc)
+      run: cmake --build build -j$(nproc)
 
     - name: Upload NRO
       uses: actions/upload-artifact@v4
