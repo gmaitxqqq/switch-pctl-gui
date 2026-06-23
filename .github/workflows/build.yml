@@ -18,12 +18,16 @@ jobs:
         submodules: false
         fetch-depth: 0
 
-    - name: Fix safe.directory + clone borealis manually
+    - name: Clone borealis dependency
       run: |
-        git config --global --add safe.directory /__w/switch-pctl-gui/switch-pctl-gui
-        # Clone borealis directly (skip submodule machinery)
-        git clone --depth 1 --branch main https://github.com/xfangfang/borealis.git externals/borealis
-        ls externals/borealis/CMakeLists.txt
+        mkdir -p externals
+        git clone --depth 1 --branch main https://github.com/nintendo-homebrew/borealis.git externals/borealis || \
+        git clone --depth 1 --branch main https://github.com/xfangfang/borealis.git externals/borealis || \
+        git clone --depth 1 https://github.com/natinus/borealis.git externals/borealis
+        echo "=== borealis contents ==="
+        ls externals/borealis/
+        ls externals/borealis/CMakeLists.txt 2>&1 || true
+        ls externals/borealis/include/borealis 2>&1 || true
 
     - name: Install CMake + make
       run: |
