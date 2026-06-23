@@ -3,12 +3,29 @@ project(switch-pctl-gui LANGUAGES C CXX)
 
 #===============================================================================
 # devkitPro Toolchain
+#   - 优先使用 CMAKE_TOOLCHAIN_FILE（由命令行 -D 传入）
+#   - 回退到 DEVKITPRO 环境变量
 #===============================================================================
-if(NOT DEFINED ENV{DEVKITPRO})
-    message(FATAL_ERROR "Please set DEVKITPRO in your environment variables")
+if(CMAKE_TOOLCHAIN_FILE)
+    message(STATUS "Using toolchain: ${CMAKE_TOOLCHAIN_FILE}")
+elseif(DEFINED ENV{DEVKITPRO})
+    set(DEVKITPRO_ENV $ENV{DEVKITPRO})
+    # 尝试常见文件名
+    foreach(_fn DevkitA64Libnx.cmake devkitA64.cmake)
+        set(_path "${DEVKITPRO_ENV}/cmake/${_fn}")
+        if(EXISTS "${_path}")
+            set(CMAKE_TOOLCHAIN_FILE "${_path}")
+            break()
+        endif()
+    endforeach()
+    if(NOT CMAKE_TOOLCHAIN_FILE)
+        message(FATAL_ERROR "Cannot find devkitPro toolchain in ${DEVKITPRO_ENV}/cmake/")
+    endif()
+    message(STATUS "Auto-detected toolchain: ${CMAKE_TOOLCHAIN_FILE}")
+    include(${CMAKE_TOOLCHAIN_FILE})
+else()
+    message(FATAL_ERROR "Please set DEVKITPRO env var or pass -DCMAKE_TOOLCHAIN_FILE=...")
 endif()
-
-include($ENV{DEVKITPRO}/cmake/DevkitA64Libnx.cmake)
 
 #===============================================================================
 # C++ Standard
@@ -34,7 +51,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 # Include Directories
 #===============================================================================
 include_directories(include)
-include_directories(externals/borealis/include)
+if(EXISTS "${CMAKE_SOURCE_DIR}/externals/borealis/include")
+    include_directories(externals/borealis/include)
+endif()
 
 #===============================================================================
 # Source Files
@@ -60,39 +79,31 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/romfs")
         DEPENDS ${CMAKE_SOURCE_DIR}/romfs
         COMMENT "Packing ROMFS"
     )
-    set(ROMFS_OBJECT "${CMAKE_BINARY_DIR}/romfs.o")
+    set(ROMFS_TARGET romfs)
 endif()
 
 #===============================================================================
-# Executable (NRO)
+# Executable
 #===============================================================================
-add_executable(${PROJECT_NAME}.nro ${SOURCES})
+add_executable(${PROJECT_NAME} ${SOURCES})
 
-if(ROMFS_OBJECT)
-    add_dependencies(${PROJECT_NAME}.nro romfs)
-    target_link_libraries(${PROJECT_NAME}.nro ${ROMFS_OBJECT})
+target_link_libraries(${PROJECT_NAME} borealis)
+
+if(ROMFS_TARGET)
+    add_dependencies(${PROJECT_NAME} ${ROMFS_TARGET})
+    target_link_options(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/romfs.o)
 endif()
 
 #===============================================================================
-# Link Libraries
+# Post-build: strip + generate NRO/NPDM
 #===============================================================================
-target_link_libraries(${PROJECT_NAME}.nro borealis libnx)
-
-#===============================================================================
-# Output Name
-#===============================================================================
-set_target_properties(
-    ${PROJECT_NAME}.nro
-    PROPERTIES
-    OUTPUT_NAME "switch-pctl-gui"
+add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_STRIP} $<TARGET_FILE:${PROJECT_NAME}>
+    COMMAND ${DEVKITPRO}/tools/elf2nro
+        $<TARGET_FILE:${PROJECT_NAME}>
+        ${CMAKE_BINARY_DIR}/${PROJECT_NAME}.nro
+        --icon=${CMAKE_SOURCE_DIR}/icon.jpg
+        --name=${PROJECT_NAME}
+    COMMENT "Generating NRO"
 )
-
-#===============================================================================
-# Install Target (for `make install`)
-#===============================================================================
-if(DEFINED ENV{DEVKITPRO})
-    install(FILES ${CMAKE_BINARY_DIR}/switch-pctl-gui.nro
-        DESTINATION ${DEVKITPRO}/switch/switch-pctl-gui
-        RENAME switch-pctl-gui.nro
-    )
-endif()
