@@ -72,6 +72,13 @@ u8 PctlManager::getRatingAge() {
     return cachedSettings.rating_age;
 }
 
+int PctlManager::getPlayTimerMinutes() {
+    // Play timer data is not available via standard libnx pctl API
+    // Returns 0 (unlimited) until raw IPC implementation is added
+    std::lock_guard<std::mutex> lock(mtx);
+    return 0;
+}
+
 // ── Stubbed setters (need raw IPC implementation) ──
 
 bool PctlManager::setRestrictionEnabled(bool enabled) {

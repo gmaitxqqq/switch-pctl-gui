@@ -29,6 +29,7 @@ public:
     bool isRestrictionEnabled();
     bool getCurrentSettings(PlayTimerSettings* settings);
     u8   getRatingAge();
+    int  getPlayTimerMinutes();
 
     // ── Setters (require raw IPC — stubbed for now) ──
     bool setRestrictionEnabled(bool enabled);   // needs raw IPC cmd 2/3

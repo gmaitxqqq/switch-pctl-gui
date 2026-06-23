@@ -1,4 +1,5 @@
 #include "main_activity.h"
+#include "time_limit_activity.h"
 #include "pctl_manager.h"
 #include "i18n.h"
 
@@ -172,7 +173,7 @@ void MainActivity::refreshStatus() {
         if (restrictionLabel) restrictionLabel->setText(i18n_get("error_pctl"));
         if (timeLabel)        timeLabel->setText(i18n_get("error_pctl"));
         if (remainingLabel)   remainingLabel->setText(i18n_get("error_pctl"));
-        if (toggleCell)       toggleCell->setState(brls::ButtonState::DISABLED);
+        if (toggleCell)       toggleCell->setClickable(false);
         return;
     }
 
