@@ -7,21 +7,12 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 permissions:
   contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: devkitpro/devkita64:latest
-      env:
-        DEVKITPRO: /opt/devkitpro
-        DEVKITA64: /opt/devkitpro/devkitA64
-        PATH: /opt/devkitpro/devkitA64/bin:/opt/devkitpro/tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     steps:
       - name: Checkout code
@@ -29,74 +20,61 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Fix Git safe.directory
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Install devkitPro (switch-pctltcp-allinone style)
+        run: |
+          # Install pacman (Arch package manager for devkitPro)
+          wget https://pkg.devkitpro.org/install-devkitpro-pacman
+          chmod +x install-devkitpro-pacman
+          sudo ./install-devkitpro-pacman
+          sudo pacman -S --noconfirm devkitA64 libnx switch-cmake
+          echo "DEVKITPRO=/opt/devkitpro" >> $GITHUB_ENV
+          echo "DEVKITA64=/opt/devkitpro/devkitA64" >> $GITHUB_ENV
+          echo "/opt/devkitpro/devkitA64/bin" >> $GITHUB_PATH
+          echo "/opt/devkitpro/tools/bin" >> $GITHUB_PATH
+          echo "/opt/devkitpro/pacman/bin" >> $GITHUB_PATH
 
-      - name: Initialize submodules (force)
+      - name: Install CMake
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake ninja-build
+          cmake --version
+
+      - name: Verify devkitPro installation
+        run: |
+          echo "DEVKITPRO=$DEVKITPRO"
+          ls $DEVKITPRO/cmake/ || echo "cmake/ dir not found"
+          find $DEVKITPRO -name "*.cmake" | head -20
+
+      - name: Initialize submodules
         run: |
           git submodule sync --recursive
           git submodule update --init --recursive --force
-          echo "=== borealis check ==="
-          ls externals/borealis/CMakeLists.txt && echo "borealis OK" || echo "borealis MISSING"
+          ls externals/borealis/CMakeLists.txt && echo "✅ borealis found" || echo "❌ borealis missing"
 
-      - name: Install CMake (if missing)
+      - name: Configure with CMake
         run: |
-          which cmake && echo "CMake found: $(cmake --version)" && exit 0
-          echo "CMake not found, installing..."
-          # devkitpro image is Debian-based, try apt
-          apt-get update -qq && apt-get install -y -qq cmake 2>/dev/null && echo "CMake installed via apt" && exit 0
-          # If apt fails, try pacman (Arch-based)
-          pacman -Sy --noconfirm cmake 2>/dev/null && echo "CMake installed via pacman" && exit 0
-          echo "WARNING: could not install CMake, will try Makefile fallback"
-
-      - name: Find devkitPro toolchain file
-        run: |
-          echo "=== Looking for DevkitA64Libnx.cmake ==="
-          find /opt/devkitpro -name "DevkitA64Libnx.cmake" 2>/dev/null && echo "FOUND" || echo "NOT found in /opt/devkitpro"
-          echo ""
-          echo "=== /opt/devkitpro structure ==="
-          ls /opt/devkitpro/ 2>/dev/null || echo "/opt/devkitpro NOT mounted"
-          echo ""
-          echo "=== cmake dir ==="
-          ls /opt/devkitpro/cmake/ 2>/dev/null || echo "cmake/ dir NOT found"
-
-      - name: Configure with CMake (try)
-        id: cmake_config
-        continue-on-error: true
-        run: |
-          TOOLCHAIN=$(find /opt/devkitpro -name "DevkitA64Libnx.cmake" 2>/dev/null | head -1)
-          if [ -z "$TOOLCHAIN" ]; then
-            echo "ERROR: toolchain file not found, skipping CMake"
-            exit 1
+          TOOLCHAIN="$DEVKITPRO/cmake/DevkitA64Libnx.cmake"
+          if [ ! -f "$TOOLCHAIN" ]; then
+            # Try alternative path
+            TOOLCHAIN=$(find $DEVKITPRO -name "DevkitA64Libnx.cmake" | head -1)
           fi
           echo "Using toolchain: $TOOLCHAIN"
           cmake -B build \
             -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_MAKE_PROGRAM=ninja
         env:
           DEVKITPRO: /opt/devkitpro
           DEVKITA64: /opt/devkitpro/devkitA64
 
-      - name: Build with CMake (try)
-        id: cmake_build
-        continue-on-error: true
-        if: steps.cmake_config.outcome == 'success'
+      - name: Build
         run: cmake --build build -j$(nproc)
         env:
           DEVKITPRO: /opt/devkitpro
           DEVKITA64: /opt/devkitpro/devkitA64
 
-      - name: Build with Makefile (fallback)
-        if: steps.cmake_config.outcome == 'failure'
-        run: make -j$(nproc)
-
       - name: List build outputs
-        run: |
-          echo "=== Build outputs ==="
-          find . -maxdepth 3 -type f \( -name "*.nro" -o -name "*.elf" -o -name "*.nsp" \) 2>/dev/null
-          echo ""
-          echo "=== All files ==="
-          find . -maxdepth 2 -type f -name "*.nro" 2>/dev/null
+        run: find . -name "*.nro" -o -name "*.elf" | head -20
 
       - name: Upload NRO artifact
         if: always()
@@ -105,10 +83,8 @@ jobs:
           name: switch-pctl-gui-nro
           path: |
             build/switch-pctl-gui.nro
-            switch-pctl-gui.nro
             **/*.nro
           if-no-files-found: warn
-          retention-days: 30
 
       - name: Create/Update Release
         if: (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && github.event_name != 'pull_request'
@@ -118,29 +94,11 @@ jobs:
           name: Switch PCTL GUI (latest build)
           body: |
             # Switch 家长控制图形化管理工具 - 最新构建
-
-            自动从最新 main/master 分支构建。
-
-            ## 功能
-            - 📊 查看家长控制状态（PIN 长度、限制开关、时长限制、剩余时间）
-            - ⏱️ 设置每日游玩时长限制（5/15/20/30/60/90/120 分钟）
-            - 🔐 启用/禁用家长控制
-            - 🔑 修改 PIN 码（调用系统 passcode applet）
-            - 🌐 中文界面（简体中文）
-
-            ## 使用方法
-            1. 下载 `switch-pctl-gui.nro`
-            2. 放到 Switch 的 SD 卡 `/switch/` 目录
-            3. 通过 Homebrew Launcher 启动
-
-            ## 构建信息
-            - Commit: ${{ github.sha }}
-            - Branch: ${{ github.ref_name }}
-            - Build time: ${{ github.run_started_at }}
+            Commit: ${{ github.sha }}
+            Build time: ${{ github.run_started_at }}
           files: |
             build/switch-pctl-gui.nro
-            switch-pctl-gui.nro
+            **/*.nro
           prerelease: true
-          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
