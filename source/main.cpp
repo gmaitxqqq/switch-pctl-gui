@@ -1,27 +1,27 @@
 #include <borealis.hpp>
-#include "main_activity.h"
-#include "pctl_manager.h"
-#include "i18n.h"
+
+// Minimal test: just show a label, no pctl, no custom activity
+// If this works → crash is in our pctl/UI code
+// If this crashes → crash is in borealis init/build config
 
 int main(int argc, char* argv[]) {
-    // Init borealis framework
+    // Step 1: Init borealis
     if (!brls::Application::init()) {
         return EXIT_FAILURE;
     }
 
-    // Create window with Chinese title
-    brls::Application::createWindow(i18n_get("app_title"));
+    // Step 2: Create window
+    brls::Application::createWindow("Switch PCTL");
 
-    // Init pctl service
-    PctlManager& pctl = PctlManager::getInstance();
-    if (!pctl.init()) {
-        // pctl service init failed - app will still show but with error status
-    }
+    // Step 3: Push a minimal activity — just a label
+    brls::Label* label = new brls::Label();
+    label->setText("Hello from borealis!");
+    label->setFontSize(24);
+    label->setHorizontalAlign(brls::HorizontalAlign::CENTER);
+    label->setVerticalAlign(brls::VerticalAlign::CENTER);
+    brls::Application::pushActivity(new brls::Activity(label));
 
-    // Push main activity
-    brls::Application::pushActivity(new MainActivity());
-
-    // Run the main loop
+    // Step 4: Run main loop
     while (brls::Application::mainLoop()) {
     }
 
