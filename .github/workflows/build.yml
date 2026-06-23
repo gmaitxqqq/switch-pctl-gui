@@ -7,12 +7,21 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkita64:latest
+      env:
+        DEVKITPRO: /opt/devkitpro
+        DEVKITA64: /opt/devkitpro/devkitA64
+        PATH: /opt/devkitpro/devkitA64/bin:/opt/devkitpro/tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     steps:
       - name: Checkout code
@@ -20,49 +29,46 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install devkitPro (switch-pctltcp-allinone style)
-        run: |
-          # Install pacman (Arch package manager for devkitPro)
-          wget https://pkg.devkitpro.org/install-devkitpro-pacman
-          chmod +x install-devkitpro-pacman
-          sudo ./install-devkitpro-pacman
-          sudo pacman -S --noconfirm devkitA64 libnx switch-cmake
-          echo "DEVKITPRO=/opt/devkitpro" >> $GITHUB_ENV
-          echo "DEVKITA64=/opt/devkitpro/devkitA64" >> $GITHUB_ENV
-          echo "/opt/devkitpro/devkitA64/bin" >> $GITHUB_PATH
-          echo "/opt/devkitpro/tools/bin" >> $GITHUB_PATH
-          echo "/opt/devkitpro/pacman/bin" >> $GITHUB_PATH
-
-      - name: Install CMake
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq cmake ninja-build
-          cmake --version
-
-      - name: Verify devkitPro installation
-        run: |
-          echo "DEVKITPRO=$DEVKITPRO"
-          ls $DEVKITPRO/cmake/ || echo "cmake/ dir not found"
-          find $DEVKITPRO -name "*.cmake" | head -20
+      - name: Fix Git safe.directory
+        run: git config --global --add safe.directory /__w/switch-pctl-gui/switch-pctl-gui
 
       - name: Initialize submodules
         run: |
           git submodule sync --recursive
           git submodule update --init --recursive --force
-          ls externals/borealis/CMakeLists.txt && echo "✅ borealis found" || echo "❌ borealis missing"
+          echo "=== borealis check ==="
+          ls externals/borealis/CMakeLists.txt && echo "✅ borealis found" || echo "❌ borealis MISSING"
+
+      - name: Install CMake (Debian-based devkitpro image)
+        run: |
+          apt-get update -qq 2>/dev/null || true
+          apt-get install -y -qq cmake 2>/dev/null && echo "✅ CMake installed via apt" && cmake --version && exit 0
+          # If apt fails, download CMake binary directly
+          echo "apt failed, trying direct download..."
+          wget -q https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-x86_64.tar.gz
+          tar xzf cmake-3.28.3-linux-x86_64.tar.gz -C /usr/local --strip-components=1
+          rm cmake-3.28.3-linux-x86_64.tar.gz
+          cmake --version
+
+      - name: Verify devkitPro environment
+        run: |
+          echo "DEVKITPRO=$DEVKITPRO"
+          aarch64-none-elf-gcc --version
+          echo "=== cmake dir ==="
+          ls $DEVKITPRO/cmake/ 2>/dev/null || echo "cmake/ not found"
+          find $DEVKITPRO -name "*.cmake" 2>/dev/null | head -10
 
       - name: Configure with CMake
         run: |
           TOOLCHAIN="$DEVKITPRO/cmake/DevkitA64Libnx.cmake"
           if [ ! -f "$TOOLCHAIN" ]; then
-            # Try alternative path
-            TOOLCHAIN=$(find $DEVKITPRO -name "DevkitA64Libnx.cmake" | head -1)
+            TOOLCHAIN=$(find $DEVKITPRO -name "DevkitA64Libnx.cmake" 2>/dev/null | head -1)
           fi
-          echo "Using toolchain: $TOOLCHAIN"
+          echo "Toolchain: $TOOLCHAIN"
           cmake -B build \
             -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_MAKE_PROGRAM=ninja
+            -DCMAKE_FIND_ROOT_PATH="$DEVKITPRO"
         env:
           DEVKITPRO: /opt/devkitpro
           DEVKITA64: /opt/devkitpro/devkitA64
@@ -74,7 +80,10 @@ jobs:
           DEVKITA64: /opt/devkitpro/devkitA64
 
       - name: List build outputs
-        run: find . -name "*.nro" -o -name "*.elf" | head -20
+        run: |
+          echo "=== Build outputs ==="
+          find . -name "*.nro" | head -20
+          ls -lh build/*.nro 2>/dev/null || true
 
       - name: Upload NRO artifact
         if: always()
@@ -85,6 +94,7 @@ jobs:
             build/switch-pctl-gui.nro
             **/*.nro
           if-no-files-found: warn
+          retention-days: 30
 
       - name: Create/Update Release
         if: (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && github.event_name != 'pull_request'
