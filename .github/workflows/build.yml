@@ -11,24 +11,23 @@ jobs:
     runs-on: ubuntu-latest
     container: devkitpro/devkita64:latest
 
+    env:
+      DEVKITPRO: /opt/devkitpro
+
     steps:
-    - name: Checkout repo
+    - name: Checkout repo with submodules
       uses: actions/checkout@v4
       with:
-        submodules: false
+        submodules: recursive
+        fetch-depth: 0
 
-    - name: Download borealis (no git clone)
+    - name: Fix safe.directory + force submodule update
       run: |
-        mkdir -p externals/borealis
-        # Download tarball from xfangfang/borealis main branch
-        curl -k -sL "https://github.com/xfangfang/borealis/archive/refs/heads/main.tar.gz" -o /tmp/borealis.tar.gz
-        tar xzf /tmp/borealis.tar.gz -C /tmp/
-        mv /tmp/borealis-main/* externals/borealis/
-        rm -rf /tmp/borealis.tar.gz /tmp/borealis-main
-        echo "=== borealis root ==="
-        ls externals/borealis/
-        echo "=== CMakeLists ==="
-        cat externals/borealis/CMakeLists.txt | head -5 || echo "NO CMakeLists.txt"
+        git config --global --add safe.directory /__w/switch-pctl-gui/switch-pctl-gui
+        git config --global --add safe.directory '*'
+        git submodule sync --recursive
+        git submodule update --init --recursive --force
+        ls externals/borealis/CMakeLists.txt || echo "WARNING: borealis CMakeLists.txt still missing"
 
     - name: Install CMake + make
       run: |
