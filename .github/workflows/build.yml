@@ -29,21 +29,43 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Verify environment
+      - name: Debug - show environment
         run: |
+          echo "=== Environment ==="
           echo "DEVKITPRO=$DEVKITPRO"
           echo "DEVKITA64=$DEVKITA64"
-          aarch64-none-elf-gcc --version
-          ls $DEVKITPRO/libnx/include/switch.h && echo "libnx found"
-          which nacptool && echo "nacptool found"
-          which elf2nro && echo "elf2nro found"
-          cmake --version
+          echo "PATH=$PATH"
+          echo ""
+          echo "=== devkitPro files ==="
+          ls $DEVKITPRO/cmake/ 2>/dev/null || echo "cmake/ dir NOT found"
+          cat $DEVKITPRO/cmake/DevkitA64Libnx.cmake 2>/dev/null | head -5 || echo "DevkitA64Libnx.cmake NOT found"
+          echo ""
+          echo "=== aarch64 gcc ==="
+          aarch64-none-elf-gcc --version 2>/dev/null || echo "aarch64-none-elf-gcc NOT found"
+          echo ""
+          echo "=== Project files ==="
+          ls -la
+          echo ""
+          echo "=== Submodules ==="
+          cat .gitmodules 2>/dev/null || echo "No .gitmodules"
+          ls externals/borealis/CMakeLists.txt 2>/dev/null || echo "borealis submodule NOT initialized"
+
+      - name: Initialize submodules (force)
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
+          echo "=== borealis check ==="
+          ls externals/borealis/CMakeLists.txt && echo "borealis OK" || echo "borealis MISSING"
 
       - name: Configure with CMake
         run: |
           cmake -B build \
             -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/DevkitA64Libnx.cmake \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -G "Unix Makefiles"
+        env:
+          DEVKITPRO: /opt/devkitpro
+          DEVKITA64: /opt/devkitpro/devkitA64
 
       - name: Build
         run: cmake --build build -j$(nproc)
@@ -51,17 +73,18 @@ jobs:
       - name: List build outputs
         run: |
           echo "=== Build outputs ==="
-          find build -type f -name "*.nro" -o -name "*.elf" -o -name "*.map" 2>/dev/null
-          ls -lh build/*.nro 2>/dev/null || echo "No .nro in build/ root"
-          # Also check source dir for .nro (some projects output to source)
+          find build -type f -name "*.nro" -o -name "*.elf" 2>/dev/null
+          ls -lh build/*.nro 2>/dev/null || true
           ls -lh *.nro 2>/dev/null || true
 
       - name: Upload NRO artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: switch-pctl-gui-nro
           path: |
             build/switch-pctl-gui.nro
+            build/switch-pctl-gui.nso
             switch-pctl-gui.nro
           if-no-files-found: warn
           retention-days: 30
