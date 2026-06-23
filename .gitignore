@@ -1,0 +1,36 @@
+# Build artifacts
+build/
+out/
+
+# Switch binaries
+*.nro
+*.map
+*.elf
+*.npdm
+*.nsp
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Externals (preserve .gitmodules)
+externals/borealis/*
+!.gitmodules
+
+# ROMFS temporary files
+romfs.o
+
+# CMake cache
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+makefile
+
+# Debug files
+*.dmp
+*.stackdump
