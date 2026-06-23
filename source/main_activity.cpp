@@ -15,6 +15,8 @@ static bool onDeleteClick(brls::View* view);
 // Global pointer to activity (set in constructor, used by handlers)
 static MainActivity* s_instance = nullptr;
 
+// ── Click handlers ────────────────────────────────────────────────────
+
 void onToggleRestriction(bool on) {
     bool success = PctlManager::getInstance().setRestrictionEnabled(on);
     if (success) {
@@ -53,7 +55,8 @@ bool onDeleteClick(brls::View* view) {
     return true;
 }
 
-// ── Helper: safely create a status row (Label + value Label) ──
+// ── Helper: safely create a status row (Label + value Label) ─────────
+
 static brls::Box* makeStatusRow(const std::string& titleText, brls::Label*& outValueLabel) {
     brls::Box* row = new brls::Box(brls::Axis::ROW);
     row->setJustifyContent(brls::JustifyContent::SPACE_BETWEEN);
@@ -75,9 +78,17 @@ static brls::Box* makeStatusRow(const std::string& titleText, brls::Label*& outV
     return row;
 }
 
+// ── Constructor: minimal setup only ───────────────────────────────────
+// Do NOT create views here — use createContentView() instead!
+
 MainActivity::MainActivity() {
     s_instance = this;
+}
 
+// ── createContentView(): build the full UI tree ───────────────────────
+// Called by pushActivity() → setContentView(result) → onContentAvailable()
+
+brls::View* MainActivity::createContentView() {
     // Create the main AppletFrame
     brls::AppletFrame* frame = new brls::AppletFrame();
     frame->setTitle(i18n_get("app_title"));
@@ -92,12 +103,12 @@ MainActivity::MainActivity() {
     content->addView(makeStatusRow("分级年龄", timeLabel));
     content->addView(makeStatusRow("社交限制", remainingLabel));
 
-    // Separator
+    // Separator line
     brls::Rectangle* sep = new brls::Rectangle(nvgRGBA(128, 128, 128, 255));
     sep->setHeight(1);
     content->addView(sep);
 
-    // ── Toggle Restriction ──────────────────────────────────────────
+    // ── Toggle Restriction (BooleanCell) ─────────────────────────────
     // Get initial state safely — if pctl not available, default to false
     bool isRestricted = false;
     {
@@ -130,26 +141,24 @@ MainActivity::MainActivity() {
     deleteCell->registerClickAction(onDeleteClick);
     content->addView(deleteCell);
 
-    // Set up scrolling content
+    // Assemble scrolling content into frame
     scroll->setContentView(content);
     frame->pushContentView(scroll);
 
-    // Register refresh action on X button
+    // Register refresh action on X button (after contentView is set on frame)
     frame->registerAction(i18n_get("hint_refresh"), brls::BUTTON_X,
         [this](brls::View* view) -> bool {
             this->refreshStatus();
             return true;
         }, false);
 
-    // Set this activity's content view
-    this->setContentView(frame);
-
-    // Initial status refresh (deferred to after construction completes)
-    // Note: refreshStatus() will be called by the framework's onShow()
+    return frame;
 }
 
+// ── onContentAvailable(): called after setContentView(), safe for data ─
+
 void MainActivity::onContentAvailable() {
-    // Safe time to call refreshStatus — content view is fully created
+    // Safe time to call refreshStatus — all views are created and registered
     refreshStatus();
 }
 

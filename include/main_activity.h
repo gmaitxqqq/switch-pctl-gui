@@ -9,7 +9,10 @@ public:
     MainActivity();
     ~MainActivity() override = default;
 
-    // Called when content view is ready — safe time to refresh data
+    // Override to build UI — called by framework during pushActivity()
+    brls::View* createContentView() override;
+
+    // Called after createContentView() — safe time to init data
     void onContentAvailable() override;
 
     // Refresh the status display from pctl service

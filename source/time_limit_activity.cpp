@@ -6,6 +6,10 @@
 #include <fmt/format.h>
 
 TimeLimitActivity::TimeLimitActivity() {
+    // Minimal constructor — all UI in createContentView()
+}
+
+brls::View* TimeLimitActivity::createContentView() {
     brls::AppletFrame* frame = new brls::AppletFrame();
     frame->setTitle(i18n_get("time_title"));
 
@@ -84,5 +88,5 @@ TimeLimitActivity::TimeLimitActivity() {
     scroll->setContentView(content);
     frame->pushContentView(scroll);
 
-    this->setContentView(frame);
+    return frame;
 }
