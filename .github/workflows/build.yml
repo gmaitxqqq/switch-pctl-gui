@@ -1,69 +1,104 @@
-name: Build Switch NRO
+name: Build Switch PCTL GUI NRO
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: gmaitxqqq/switch-devkitpro:latest
-      options: --user root
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Setup build environment
-      run: |
-        # Update package list
-        apt-get update -qq
-        # Ensure CMake and build tools are available
-        apt-get install -y -qq cmake ninja-build python3 2>/dev/null || true
-        # Show devkitPro environment
-        echo "DEVKITPRO: $DEVKITPRO"
-        echo "PATH: $PATH"
-        ls $DEVKITPRO 2>/dev/null || echo "DEVKITPRO dir not found"
-        # If using Docker image, devkitPro should already be installed
-        # If not, install it
-        if [ ! -d "$DEVKITPRO" ]; then
-          echo "Installing devkitPro..."
-          git clone https://github.com/devkitPro/devkitPro-pacman.git /tmp/dkp
-          # Install devkitA64 and switch tools
-          pacman -Syu --noconfirm 2>/dev/null || true
-        fi
-
-    - name: Build project
-      run: |
-        cd /github/workspace
-        cmake -B build \
-          -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/DevkitA64Libnx.cmake \
-          -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release
-        ninja -C build
+      image: devkitpro/devkita64:latest
       env:
         DEVKITPRO: /opt/devkitpro
+        DEVKITA64: /opt/devkitpro/devkitA64
+        PATH: /opt/devkitpro/devkitA64/bin:/opt/devkitpro/tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-    - name: List build outputs
-      run: |
-        echo "Build directory contents:"
-        find build -type f | head -20
-        echo ""
-        echo "Looking for .nro file:"
-        find build -name "*.nro" -o -name "*.nso" -o -name "*.npdm" 2>/dev/null
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    - name: Upload NRO artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: switch-pctl-gui-nro
-        path: |
-          build/switch-pctl-gui.nro
-          build/switch-pctl-gui.nso
-          build/switch-pctl-gui.npdm
-        if-no-files-found: warn
+      - name: Verify environment
+        run: |
+          echo "DEVKITPRO=$DEVKITPRO"
+          echo "DEVKITA64=$DEVKITA64"
+          aarch64-none-elf-gcc --version
+          ls $DEVKITPRO/libnx/include/switch.h && echo "libnx found"
+          which nacptool && echo "nacptool found"
+          which elf2nro && echo "elf2nro found"
+          cmake --version
+
+      - name: Configure with CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/DevkitA64Libnx.cmake \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: List build outputs
+        run: |
+          echo "=== Build outputs ==="
+          find build -type f -name "*.nro" -o -name "*.elf" -o -name "*.map" 2>/dev/null
+          ls -lh build/*.nro 2>/dev/null || echo "No .nro in build/ root"
+          # Also check source dir for .nro (some projects output to source)
+          ls -lh *.nro 2>/dev/null || true
+
+      - name: Upload NRO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: switch-pctl-gui-nro
+          path: |
+            build/switch-pctl-gui.nro
+            switch-pctl-gui.nro
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Create/Update Release
+        if: (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Switch PCTL GUI (latest build)
+          body: |
+            # Switch 家长控制图形化管理工具 - 最新构建
+
+            自动从最新 main/master 分支构建。
+
+            ## 功能
+            - 📊 查看家长控制状态（PIN 长度、限制开关、时长限制、剩余时间）
+            - ⏱️ 设置每日游玩时长限制（5/15/20/30/60/90/120 分钟）
+            - 🔐 启用/禁用家长控制
+            - 🔑 修改 PIN 码（调用系统 passcode applet）
+            - 🌐 中文界面（简体中文）
+
+            ## 使用方法
+            1. 下载 `switch-pctl-gui.nro`
+            2. 放到 Switch 的 SD 卡 `/switch/` 目录
+            3. 通过 Homebrew Launcher 启动
+
+            ## 构建信息
+            - Commit: ${{ github.sha }}
+            - Branch: ${{ github.ref_name }}
+            - Build time: ${{ github.run_started_at }}
+
+            注意：首次使用请确保已安装 borealis 子模块。
+          files: |
+            build/switch-pctl-gui.nro
+            switch-pctl-gui.nro
+          prerelease: true
+          make_latest: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
