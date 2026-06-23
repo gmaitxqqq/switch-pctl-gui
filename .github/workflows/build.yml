@@ -1,114 +1,54 @@
-name: Build Switch PCTL GUI NRO
+name: Build Switch NRO
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
-permissions:
-  contents: write
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: devkitpro/devkita64:latest
-      env:
-        DEVKITPRO: /opt/devkitpro
-        DEVKITA64: /opt/devkitpro/devkitA64
-        PATH: /opt/devkitpro/devkitA64/bin:/opt/devkitpro/tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    container: devkitpro/devkita64:latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    - name: Checkout repo
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-      - name: Fix Git safe.directory
-        run: git config --global --add safe.directory /__w/switch-pctl-gui/switch-pctl-gui
+    - name: Install CMake
+      run: |
+        apt-get update -qq
+        apt-get install -y -qq cmake jq git
+        cmake --version
 
-      - name: Initialize submodules
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive --force
-          echo "=== borealis check ==="
-          ls externals/borealis/CMakeLists.txt && echo "✅ borealis found" || echo "❌ borealis MISSING"
+    - name: Show devkitPro env
+      run: |
+        cat /etc/profile.d/devkitpro.sh || true
+        echo "DEVKITPRO=$DEVKITPRO"
+        ls /opt/devkitpro/cmake/ || true
 
-      - name: Install CMake (Debian-based devkitpro image)
-        run: |
-          apt-get update -qq 2>/dev/null || true
-          apt-get install -y -qq cmake 2>/dev/null && echo "✅ CMake installed via apt" && cmake --version && exit 0
-          # If apt fails, download CMake binary directly
-          echo "apt failed, trying direct download..."
-          wget -q https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-x86_64.tar.gz
-          tar xzf cmake-3.28.3-linux-x86_64.tar.gz -C /usr/local --strip-components=1
-          rm cmake-3.28.3-linux-x86_64.tar.gz
-          cmake --version
+    - name: Configure with CMake
+      run: |
+        source /etc/profile.d/devkitpro.sh || true
+        export DEVKITPRO=/opt/devkitpro
+        export DEVKITARM=/opt/devkitpro/devkitARM
+        export DEVKITAPPCAFE=/opt/devkitpro/devkitA64
+        echo "DEVKITPRO=${DEVKITPRO}"
+        ls ${DEVKITPRO}/cmake/ || true
+        cmake -B build \
+          -DCMAKE_TOOLCHAIN_FILE=${DEVKITPRO}/cmake/DevkitA64Libnx.cmake \
+          -DCMAKE_BUILD_TYPE=Release
 
-      - name: Verify devkitPro environment
-        run: |
-          echo "DEVKITPRO=$DEVKITPRO"
-          aarch64-none-elf-gcc --version
-          echo "=== cmake dir ==="
-          ls $DEVKITPRO/cmake/ 2>/dev/null || echo "cmake/ not found"
-          find $DEVKITPRO -name "*.cmake" 2>/dev/null | head -10
+    - name: Build
+      run: |
+        source /etc/profile.d/devkitpro.sh || true
+        export DEVKITPRO=/opt/devkitpro
+        cmake --build build --config Release -j$(nproc)
 
-      - name: Configure with CMake
-        run: |
-          TOOLCHAIN="$DEVKITPRO/cmake/DevkitA64Libnx.cmake"
-          if [ ! -f "$TOOLCHAIN" ]; then
-            TOOLCHAIN=$(find $DEVKITPRO -name "DevkitA64Libnx.cmake" 2>/dev/null | head -1)
-          fi
-          echo "Toolchain: $TOOLCHAIN"
-          cmake -B build \
-            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_FIND_ROOT_PATH="$DEVKITPRO"
-        env:
-          DEVKITPRO: /opt/devkitpro
-          DEVKITA64: /opt/devkitpro/devkitA64
-
-      - name: Build
-        run: cmake --build build -j$(nproc)
-        env:
-          DEVKITPRO: /opt/devkitpro
-          DEVKITA64: /opt/devkitpro/devkitA64
-
-      - name: List build outputs
-        run: |
-          echo "=== Build outputs ==="
-          find . -name "*.nro" | head -20
-          ls -lh build/*.nro 2>/dev/null || true
-
-      - name: Upload NRO artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: switch-pctl-gui-nro
-          path: |
-            build/switch-pctl-gui.nro
-            **/*.nro
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Create/Update Release
-        if: (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && github.event_name != 'pull_request'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Switch PCTL GUI (latest build)
-          body: |
-            # Switch 家长控制图形化管理工具 - 最新构建
-            Commit: ${{ github.sha }}
-            Build time: ${{ github.run_started_at }}
-          files: |
-            build/switch-pctl-gui.nro
-            **/*.nro
-          prerelease: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Upload NRO
+      uses: actions/upload-artifact@v4
+      with:
+        name: switch-pctl-gui.nro
+        path: build/switch-pctl-gui.nro
