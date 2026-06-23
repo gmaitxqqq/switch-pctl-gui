@@ -45,7 +45,7 @@ jobs:
         cmake --version
 
     - name: Configure
-      run: cmake -B build -DPLATFORM_SWITCH=ON
+      run: cmake -B build -DPLATFORM_SWITCH=ON -DFMT_OS=OFF
 
     - name: Build
       run: cmake --build build -j$(nproc)
