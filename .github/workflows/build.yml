@@ -17,13 +17,18 @@ jobs:
       with:
         submodules: false
 
-    - name: Clone borealis
+    - name: Download borealis (no git clone)
       run: |
-        git config --global http.sslVerify false
-        rm -rf externals/borealis
-        mkdir -p externals
-        git clone --depth 1 https://github.com/natinus/borealis.git externals/borealis
-        ls externals/borealis/CMakeLists.txt
+        mkdir -p externals/borealis
+        # Download tarball from xfangfang/borealis main branch
+        curl -k -sL "https://github.com/xfangfang/borealis/archive/refs/heads/main.tar.gz" -o /tmp/borealis.tar.gz
+        tar xzf /tmp/borealis.tar.gz -C /tmp/
+        mv /tmp/borealis-main/* externals/borealis/
+        rm -rf /tmp/borealis.tar.gz /tmp/borealis-main
+        echo "=== borealis root ==="
+        ls externals/borealis/
+        echo "=== CMakeLists ==="
+        cat externals/borealis/CMakeLists.txt | head -5 || echo "NO CMakeLists.txt"
 
     - name: Install CMake + make
       run: |
