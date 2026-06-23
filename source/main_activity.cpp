@@ -173,7 +173,7 @@ void MainActivity::refreshStatus() {
         if (restrictionLabel) restrictionLabel->setText(i18n_get("error_pctl"));
         if (timeLabel)        timeLabel->setText(i18n_get("error_pctl"));
         if (remainingLabel)   remainingLabel->setText(i18n_get("error_pctl"));
-        if (toggleCell)       toggleCell->setClickable(false);
+        if (toggleCell)       toggleCell->setFocusable(false);
         return;
     }
 
