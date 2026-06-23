@@ -12,29 +12,24 @@ jobs:
     container: devkitpro/devkita64:latest
 
     steps:
-    - name: Checkout repo (no submodule)
+    - name: Checkout repo
       uses: actions/checkout@v4
       with:
         submodules: false
-        fetch-depth: 0
 
-    - name: Clone borealis dependency
+    - name: Clone borealis
       run: |
+        git config --global http.sslVerify false
+        rm -rf externals/borealis
         mkdir -p externals
-        git clone --depth 1 --branch main https://github.com/nintendo-homebrew/borealis.git externals/borealis || \
-        git clone --depth 1 --branch main https://github.com/xfangfang/borealis.git externals/borealis || \
         git clone --depth 1 https://github.com/natinus/borealis.git externals/borealis
-        echo "=== borealis contents ==="
-        ls externals/borealis/
-        ls externals/borealis/CMakeLists.txt 2>&1 || true
-        ls externals/borealis/include/borealis 2>&1 || true
+        ls externals/borealis/CMakeLists.txt
 
     - name: Install CMake + make
       run: |
         apt-get update -qq
         apt-get install -y -qq cmake make
         cmake --version
-        make --version
 
     - name: Configure
       run: |
@@ -42,8 +37,7 @@ jobs:
         echo "Toolchain: ${TOOLCHAIN}"
         cmake -B build \
           -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" \
-          -DCMAKE_BUILD_TYPE=Release \
-          -G "Unix Makefiles"
+          -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
       run: cmake --build build -j$(nproc)
