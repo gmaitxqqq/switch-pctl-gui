@@ -17,33 +17,33 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Install CMake
+    - name: Install CMake + make
       run: |
         apt-get update -qq
-        apt-get install -y -qq cmake jq git
+        apt-get install -y -qq cmake make
         cmake --version
+        make --version
 
-    - name: Show devkitPro env
+    - name: Show devkitPro layout
       run: |
-        cat /etc/profile.d/devkitpro.sh || true
-        echo "DEVKITPRO=$DEVKITPRO"
-        ls /opt/devkitpro/cmake/ || true
+        . /etc/profile.d/devkitpro.sh || true
+        echo "DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}"
+        ls /opt/devkitpro/cmake/
 
     - name: Configure with CMake
       run: |
-        source /etc/profile.d/devkitpro.sh || true
+        . /etc/profile.d/devkitpro.sh || true
         export DEVKITPRO=/opt/devkitpro
-        export DEVKITARM=/opt/devkitpro/devkitARM
-        export DEVKITAPPCAFE=/opt/devkitpro/devkitA64
-        echo "DEVKITPRO=${DEVKITPRO}"
-        ls ${DEVKITPRO}/cmake/ || true
+        TOOLCHAIN=${DEVKITPRO}/cmake/devkitA64.cmake
+        echo "Toolchain: ${TOOLCHAIN}"
         cmake -B build \
-          -DCMAKE_TOOLCHAIN_FILE=${DEVKITPRO}/cmake/DevkitA64Libnx.cmake \
-          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN} \
+          -DCMAKE_BUILD_TYPE=Release \
+          -G "Unix Makefiles"
 
     - name: Build
       run: |
-        source /etc/profile.d/devkitpro.sh || true
+        . /etc/profile.d/devkitpro.sh || true
         export DEVKITPRO=/opt/devkitpro
         cmake --build build --config Release -j$(nproc)
 
