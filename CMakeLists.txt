@@ -63,14 +63,15 @@ set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 target_link_libraries(${PROJECT_NAME} PRIVATE borealis ${APP_PLATFORM_LIB})
 
 #===============================================================================
-# NRO generation (Switch only)
+# NRO generation (Switch only) — ALL keyword makes it part of default build
 #===============================================================================
+set(APP_VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_ALTER}")
+
 if(PLATFORM_SWITCH)
-    add_custom_target(${PROJECT_NAME}.nro
+    add_custom_target(${PROJECT_NAME}.nro ALL
         DEPENDS ${PROJECT_NAME}
         COMMAND ${NX_NACPTOOL_EXE} --create ${PROJECT_NAME} ${PROJECT_AUTHOR}
-            ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_ALTER}
-            ${PROJECT_NAME}.nacp --titleid=${PSN_TITLE_ID}
+            ${APP_VERSION} ${PROJECT_NAME}.nacp
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${PROJECT_RESOURCES} ${CMAKE_BINARY_DIR}/resources
         COMMAND ${NX_ELF2NRO_EXE} ${PROJECT_NAME}.elf ${PROJECT_NAME}.nro
