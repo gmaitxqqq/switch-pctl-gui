@@ -66,7 +66,7 @@ file(GLOB_RECURSE SOURCES "source/*.cpp")
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/externals/borealis/CMakeLists.txt")
     message(FATAL_ERROR
       "Borealis not found at externals/borealis. "
-      "Run: git clone --depth 1 --branch main https://github.com/xfangfang/borealis.git externals/borealis"
+      "Run: actions/checkout@v4 with repository=xfangfang/borealis ref=wiliwili path=externals/borealis"
     )
 endif()
 

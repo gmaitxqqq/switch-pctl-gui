@@ -15,19 +15,19 @@ jobs:
       DEVKITPRO: /opt/devkitpro
 
     steps:
-    - name: Checkout repo with submodules
+    - name: Checkout project
+      uses: actions/checkout@v4
+
+    - name: Checkout borealis (wiliwili branch)
       uses: actions/checkout@v4
       with:
+        repository: xfangfang/borealis
+        ref: wiliwili
+        path: externals/borealis
         submodules: recursive
-        fetch-depth: 0
 
-    - name: Fix safe.directory + force submodule update
-      run: |
-        git config --global --add safe.directory /__w/switch-pctl-gui/switch-pctl-gui
-        git config --global --add safe.directory '*'
-        git submodule sync --recursive
-        git submodule update --init --recursive --force
-        ls externals/borealis/CMakeLists.txt || echo "WARNING: borealis CMakeLists.txt still missing"
+    - name: Verify borealis
+      run: ls externals/borealis/CMakeLists.txt && echo "borealis OK"
 
     - name: Install CMake + make
       run: |

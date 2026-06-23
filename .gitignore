@@ -34,3 +34,4 @@ makefile
 # Debug files
 *.dmp
 *.stackdump
+nul
