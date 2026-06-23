@@ -2,14 +2,15 @@
 #include "main_activity.h"
 #include "pctl_manager.h"
 #include "i18n.h"
+#include "time_limit_activity.h"
 
 #include <fmt/format.h>
 
-// Forward declarations for click handlers (called after full construction)
+// Forward declarations for click handlers (must return bool for ActionListener)
 static void onToggleRestriction(bool on);
-static void onTimeLimitClick(brls::View* view);
-static void onPinChangeClick(brls::View* view);
-static void onDeleteClick(brls::View* view);
+static bool onTimeLimitClick(brls::View* view);
+static bool onPinChangeClick(brls::View* view);
+static bool onDeleteClick(brls::View* view);
 
 // Global pointer to activity (set in constructor, used by handlers)
 static MainActivity* s_instance = nullptr;
