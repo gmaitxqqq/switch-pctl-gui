@@ -9,6 +9,9 @@ public:
     MainActivity();
     ~MainActivity() override = default;
 
+    // Called when content view is ready — safe time to refresh data
+    void onContentAvailable() override;
+
     // Refresh the status display from pctl service
     void refreshStatus();
 

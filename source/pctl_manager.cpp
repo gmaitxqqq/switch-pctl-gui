@@ -85,10 +85,12 @@ bool PctlManager::setRestrictionEnabled(bool enabled) {
     std::lock_guard<std::mutex> lock(mtx);
     if (!available) return false;
 
-    // pctlEnableRestriction / pctlDisableRestriction are NOT in standard libnx pctl.h
     // Use raw IPC via serviceDispatch on IParentalControlService
     // Cmd 2 = EnableRestriction, Cmd 3 = DisableRestriction
+    // Note: pctlGetServiceSession_Service() returns the underlying service handle
     Service* srv = pctlGetServiceSession_Service();
+    if (!srv) return false;
+
     u32 cmdId = enabled ? 2 : 3;
     Result rc = serviceDispatch(srv, cmdId);
 

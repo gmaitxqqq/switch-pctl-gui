@@ -1,13 +1,83 @@
+#include <borealis.hpp>
 #include "main_activity.h"
-#include "time_limit_activity.h"
 #include "pctl_manager.h"
 #include "i18n.h"
 
-#include <borealis.hpp>
 #include <fmt/format.h>
 
+// Forward declarations for click handlers (called after full construction)
+static void onToggleRestriction(bool on);
+static void onTimeLimitClick(brls::View* view);
+static void onPinChangeClick(brls::View* view);
+static void onDeleteClick(brls::View* view);
+
+// Global pointer to activity (set in constructor, used by handlers)
+static MainActivity* s_instance = nullptr;
+
+void onToggleRestriction(bool on) {
+    bool success = PctlManager::getInstance().setRestrictionEnabled(on);
+    if (success) {
+        brls::Application::notify(i18n_get("success"));
+    } else {
+        brls::Application::notify(i18n_get("error_generic"));
+    }
+    if (s_instance) s_instance->refreshStatus();
+}
+
+bool onTimeLimitClick(brls::View* view) {
+    brls::Application::pushActivity(new TimeLimitActivity());
+    return true;
+}
+
+bool onPinChangeClick(brls::View* view) {
+    bool success = PctlManager::getInstance().showPin();
+    if (!success) {
+        brls::Application::notify(i18n_get("error_generic"));
+    }
+    return true;
+}
+
+bool onDeleteClick(brls::View* view) {
+    brls::Dialog* dialog = new brls::Dialog(i18n_get("confirm_delete"));
+    dialog->addButton(i18n_get("btn_confirm"), []() {
+        bool success = PctlManager::getInstance().deleteConfig();
+        if (success) {
+            brls::Application::notify(i18n_get("success"));
+        } else {
+            brls::Application::notify(i18n_get("error_generic"));
+        }
+    });
+    dialog->addButton(i18n_get("btn_cancel"), []() {});
+    dialog->open();
+    return true;
+}
+
+// ── Helper: safely create a status row (Label + value Label) ──
+static brls::Box* makeStatusRow(const std::string& titleText, brls::Label*& outValueLabel) {
+    brls::Box* row = new brls::Box(brls::Axis::ROW);
+    row->setJustifyContent(brls::JustifyContent::SPACE_BETWEEN);
+    row->setAlignItems(brls::AlignItems::CENTER);
+    row->setHeight(40);
+    row->setGrow(1);
+
+    brls::Label* titleLbl = new brls::Label();
+    titleLbl->setText(titleText);
+    titleLbl->setFontSize(16);
+
+    outValueLabel = new brls::Label();
+    outValueLabel->setFontSize(16);
+    outValueLabel->setHorizontalAlign(brls::HorizontalAlign::RIGHT);
+    outValueLabel->setGrow(1);
+
+    row->addView(titleLbl);
+    row->addView(outValueLabel);
+    return row;
+}
+
 MainActivity::MainActivity() {
-    // Create the main AppletFrame (Horizon-style frame with header/footer)
+    s_instance = this;
+
+    // Create the main AppletFrame
     brls::AppletFrame* frame = new brls::AppletFrame();
     frame->setTitle(i18n_get("app_title"));
 
@@ -16,74 +86,10 @@ MainActivity::MainActivity() {
     brls::Box* content = new brls::Box(brls::Axis::COLUMN);
     content->setPadding(20, 20, 20, 20);
 
-    PctlManager& pctl = PctlManager::getInstance();
-
     // ── Status Section ──────────────────────────────────────────────
-    // Restriction enabled status
-    {
-        brls::Box* row = new brls::Box(brls::Axis::ROW);
-        row->setJustifyContent(brls::JustifyContent::SPACE_BETWEEN);
-        row->setAlignItems(brls::AlignItems::CENTER);
-        row->setHeight(40);
-        row->setGrow(1);
-
-        brls::Label* titleLbl = new brls::Label();
-        titleLbl->setText(i18n_get("status_restriction"));
-        titleLbl->setFontSize(16);
-
-        restrictionLabel = new brls::Label();
-        restrictionLabel->setFontSize(16);
-        restrictionLabel->setHorizontalAlign(brls::HorizontalAlign::RIGHT);
-        restrictionLabel->setGrow(1);
-
-        row->addView(titleLbl);
-        row->addView(restrictionLabel);
-        content->addView(row);
-    }
-
-    // Rating age
-    {
-        brls::Box* row = new brls::Box(brls::Axis::ROW);
-        row->setJustifyContent(brls::JustifyContent::SPACE_BETWEEN);
-        row->setAlignItems(brls::AlignItems::CENTER);
-        row->setHeight(40);
-        row->setGrow(1);
-
-        brls::Label* titleLbl = new brls::Label();
-        titleLbl->setText("分级年龄");
-        titleLbl->setFontSize(16);
-
-        timeLabel = new brls::Label();
-        timeLabel->setFontSize(16);
-        timeLabel->setHorizontalAlign(brls::HorizontalAlign::RIGHT);
-        timeLabel->setGrow(1);
-
-        row->addView(titleLbl);
-        row->addView(timeLabel);
-        content->addView(row);
-    }
-
-    // SNS post restriction
-    {
-        brls::Box* row = new brls::Box(brls::Axis::ROW);
-        row->setJustifyContent(brls::JustifyContent::SPACE_BETWEEN);
-        row->setAlignItems(brls::AlignItems::CENTER);
-        row->setHeight(40);
-        row->setGrow(1);
-
-        brls::Label* titleLbl = new brls::Label();
-        titleLbl->setText("社交限制");
-        titleLbl->setFontSize(16);
-
-        remainingLabel = new brls::Label();
-        remainingLabel->setFontSize(16);
-        remainingLabel->setHorizontalAlign(brls::HorizontalAlign::RIGHT);
-        remainingLabel->setGrow(1);
-
-        row->addView(titleLbl);
-        row->addView(remainingLabel);
-        content->addView(row);
-    }
+    content->addView(makeStatusRow(i18n_get("status_restriction"), restrictionLabel));
+    content->addView(makeStatusRow("分级年龄", timeLabel));
+    content->addView(makeStatusRow("社交限制", remainingLabel));
 
     // Separator
     brls::Rectangle* sep = new brls::Rectangle(nvgRGBA(128, 128, 128, 255));
@@ -91,61 +97,36 @@ MainActivity::MainActivity() {
     content->addView(sep);
 
     // ── Toggle Restriction ──────────────────────────────────────────
-    bool isRestricted = pctl.isRestrictionEnabled();
-    toggleCell = new brls::BooleanCell();
-    toggleCell->init(i18n_get("menu_toggle"), isRestricted, [this](bool on) {
-        bool success = PctlManager::getInstance().setRestrictionEnabled(on);
-        if (success) {
-            brls::Application::notify(i18n_get("success"));
-        } else {
-            brls::Application::notify(i18n_get("error_generic"));
+    // Get initial state safely — if pctl not available, default to false
+    bool isRestricted = false;
+    {
+        PctlManager& pctl = PctlManager::getInstance();
+        if (pctl.isAvailable()) {
+            isRestricted = pctl.isRestrictionEnabled();
         }
-        this->refreshStatus();
-    });
+    }
+
+    toggleCell = new brls::BooleanCell();
+    toggleCell->init(i18n_get("menu_toggle"), isRestricted, onToggleRestriction);
     content->addView(toggleCell);
 
     // ── Menu Items ──────────────────────────────────────────────────
-    // Time limit setting (opens TimeLimitActivity)
     timeLimitCell = new brls::DetailCell();
     timeLimitCell->setText(i18n_get("menu_time_limit"));
     timeLimitCell->setDetailText("—");
-    timeLimitCell->registerClickAction([this](brls::View* view) -> bool {
-        brls::Application::pushActivity(new TimeLimitActivity());
-        return true;
-    });
+    timeLimitCell->registerClickAction(onTimeLimitClick);
     content->addView(timeLimitCell);
 
-    // PIN display
     pinCell = new brls::DetailCell();
     pinCell->setText(i18n_get("menu_pin_change"));
     pinCell->setDetailText("");
-    pinCell->registerClickAction([](brls::View* view) -> bool {
-        bool success = PctlManager::getInstance().showPin();
-        if (!success) {
-            brls::Application::notify(i18n_get("error_generic"));
-        }
-        return true;
-    });
+    pinCell->registerClickAction(onPinChangeClick);
     content->addView(pinCell);
 
-    // Delete configuration (with confirmation dialog)
     deleteCell = new brls::DetailCell();
     deleteCell->setText(i18n_get("menu_delete"));
     deleteCell->setDetailText("");
-    deleteCell->registerClickAction([](brls::View* view) -> bool {
-        brls::Dialog* dialog = new brls::Dialog(i18n_get("confirm_delete"));
-        dialog->addButton(i18n_get("btn_confirm"), []() {
-            bool success = PctlManager::getInstance().deleteConfig();
-            if (success) {
-                brls::Application::notify(i18n_get("success"));
-            } else {
-                brls::Application::notify(i18n_get("error_generic"));
-            }
-        });
-        dialog->addButton(i18n_get("btn_cancel"), []() {});
-        dialog->open();
-        return true;
-    });
+    deleteCell->registerClickAction(onDeleteClick);
     content->addView(deleteCell);
 
     // Set up scrolling content
@@ -162,13 +143,19 @@ MainActivity::MainActivity() {
     // Set this activity's content view
     this->setContentView(frame);
 
-    // Initial status refresh
+    // Initial status refresh (deferred to after construction completes)
+    // Note: refreshStatus() will be called by the framework's onShow()
+}
+
+void MainActivity::onContentAvailable() {
+    // Safe time to call refreshStatus — content view is fully created
     refreshStatus();
 }
 
 void MainActivity::refreshStatus() {
     PctlManager& pctl = PctlManager::getInstance();
 
+    // Guard: ensure labels exist before touching them
     if (!pctl.isAvailable()) {
         if (restrictionLabel) restrictionLabel->setText(i18n_get("error_pctl"));
         if (timeLabel)        timeLabel->setText(i18n_get("error_pctl"));
@@ -178,7 +165,12 @@ void MainActivity::refreshStatus() {
     }
 
     PlayTimerSettings settings;
-    pctl.getCurrentSettings(&settings);
+    if (!pctl.getCurrentSettings(&settings)) {
+        if (restrictionLabel) restrictionLabel->setText(i18n_get("error_generic"));
+        if (timeLabel)        timeLabel->setText(i18n_get("error_generic"));
+        if (remainingLabel)   remainingLabel->setText(i18n_get("error_generic"));
+        return;
+    }
 
     // Restriction enabled
     if (restrictionLabel) {
@@ -189,7 +181,7 @@ void MainActivity::refreshStatus() {
 
     // Rating age
     if (timeLabel) {
-        timeLabel->setText(fmt::format("{}", settings.rating_age));
+        timeLabel->setText(fmt::format("{}", (int)settings.rating_age));
     }
 
     // SNS restriction
@@ -204,7 +196,7 @@ void MainActivity::refreshStatus() {
         toggleCell->setOn(settings.restriction_enabled, false);
     }
 
-    // Update time limit cell (placeholder since we don't have play timer data)
+    // Update time limit cell
     if (timeLimitCell) {
         timeLimitCell->setDetailText(i18n_get("unlimited"));
     }
