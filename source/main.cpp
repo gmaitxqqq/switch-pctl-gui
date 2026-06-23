@@ -1,29 +1,30 @@
 #include <borealis.hpp>
-
-// Minimal test: just show a label, no pctl, no custom activity
-// If this works → crash is in our pctl/UI code
-// If this crashes → crash is in borealis init/build config
+#include "pctl_manager.h"
+#include "main_activity.h"
 
 int main(int argc, char* argv[]) {
-    // Step 1: Init borealis
+    (void)argc;
+    (void)argv;
+
+    // 1. Initialize borealis first
     if (!brls::Application::init()) {
+        brls::Logger::error("Failed to initialize borealis");
         return EXIT_FAILURE;
     }
 
-    // Step 2: Create window
-    brls::Application::createWindow("Switch PCTL");
+    // 2. Initialize pctl service (after borealis — ns, nifm, pl may be needed)
+    PctlManager::instance().initialize();
 
-    // Step 3: Push a minimal activity — just a label
-    brls::Label* label = new brls::Label();
-    label->setText("Hello from borealis!");
-    label->setFontSize(24);
-    label->setHorizontalAlign(brls::HorizontalAlign::CENTER);
-    label->setVerticalAlign(brls::VerticalAlign::CENTER);
-    brls::Application::pushActivity(new brls::Activity(label));
+    // 3. Create window and push activity
+    brls::Application::createWindow("Switch 家长控制");
+    brls::Application::pushActivity(new MainActivity());
 
-    // Step 4: Run main loop
-    while (brls::Application::mainLoop()) {
-    }
+    // 4. Main loop
+    while (brls::Application::mainLoop()) {}
+
+    // 5. Cleanup (order reversed)
+    PctlManager::instance().finalize();
+    brls::Application::quit();
 
     return EXIT_SUCCESS;
 }

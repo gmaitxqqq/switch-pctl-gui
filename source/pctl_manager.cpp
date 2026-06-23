@@ -1,125 +1,81 @@
 #include "pctl_manager.h"
-#include <switch.h>
-#include <cstdio>
+#include <pctl.h>
+#include <mutex>
 
-bool PctlManager::init() {
-    std::lock_guard<std::mutex> lock(mtx);
-
-    Result rc = pctlInitialize();
-    if (R_FAILED(rc)) {
-        available = false;
-        cachedSettings.restriction_enabled = false;
-        cachedSettings.rating_age = 0;
-        cachedSettings.sns_restriction = false;
-        cachedSettings.free_comm_restriction = false;
-        return false;
-    }
-
-    available = true;
-
-    // Read initial settings
-    bool enabled = false;
-    rc = pctlIsRestrictionEnabled(&enabled);
-    cachedSettings.restriction_enabled = R_SUCCEEDED(rc) && enabled;
-
-    PctlRestrictionSettings libnxSettings = {};
-    rc = pctlGetCurrentSettings(&libnxSettings);
-    if (R_SUCCEEDED(rc)) {
-        cachedSettings.rating_age            = libnxSettings.rating_age;
-        cachedSettings.sns_restriction       = libnxSettings.sns_post_restriction;
-        cachedSettings.free_comm_restriction = libnxSettings.free_communication_restriction;
-    }
-
-    return true;
+PctlManager::PctlManager() : available(false) {
+    // Don't call pctlInitialize here - do it in main.cpp
 }
+
+PctlManager::~PctlManager() {
+    // Don't call pctlExit here
+}
+
+PctlManager& PctlManager::instance() {
+    static PctlManager inst;
+    return inst;
+}
+
+bool PctlManager::initialize() {
+    std::lock_guard<std::mutex> lock(mtx);
+    Result rc = pctlInitialize();
+    available = R_SUCCEEDED(rc);
+    if (available) {
+        // Cache initial settings
+        pctlGetCurrentSettings(&cachedSettings, sizeof(cachedSettings));
+    }
+    return available;
+}
+
+void PctlManager::finalize() {
+    std::lock_guard<std::mutex> lock(mtx);
+    if (available) {
+        pctlExit();
+        available = false;
+    }
+}
+
+bool PctlManager::isAvailable() {
+    std::lock_guard<std::mutex> lock(mtx);
+    return available;
+}
+
+// ── Status getters (using official libnx API) ──
 
 bool PctlManager::isRestrictionEnabled() {
     std::lock_guard<std::mutex> lock(mtx);
     if (!available) return false;
-
     bool enabled = false;
-    Result rc = pctlIsRestrictionEnabled(&enabled);
-    cachedSettings.restriction_enabled = R_SUCCEEDED(rc) && enabled;
-    return cachedSettings.restriction_enabled;
-}
-
-bool PctlManager::getCurrentSettings(PlayTimerSettings* settings) {
-    std::lock_guard<std::mutex> lock(mtx);
-    if (!available || !settings) return false;
-
-    // Refresh restriction enabled status
-    bool enabled = false;
-    Result rc = pctlIsRestrictionEnabled(&enabled);
-    if (R_SUCCEEDED(rc)) {
-        cachedSettings.restriction_enabled = enabled;
-    }
-
-    // Get restriction settings
-    PctlRestrictionSettings libnxSettings = {};
-    rc = pctlGetCurrentSettings(&libnxSettings);
-    if (R_SUCCEEDED(rc)) {
-        cachedSettings.rating_age            = libnxSettings.rating_age;
-        cachedSettings.sns_restriction       = libnxSettings.sns_post_restriction;
-        cachedSettings.free_comm_restriction = libnxSettings.free_communication_restriction;
-    }
-
-    *settings = cachedSettings;
-    return true;
+    pctlIsRestrictionEnabled(&enabled);
+    cachedSettings.restriction_enabled = enabled;
+    return enabled;
 }
 
 u8 PctlManager::getRatingAge() {
     std::lock_guard<std::mutex> lock(mtx);
+    if (!available) return 0;
+    pctlGetCurrentSettings(&cachedSettings, sizeof(cachedSettings));
     return cachedSettings.rating_age;
 }
 
+// ── Stub implementations (real IPC not yet implemented) ──
+
 int PctlManager::getPlayTimerMinutes() {
-    // Play timer data is not available via standard libnx pctl API
-    // Returns 0 (unlimited) until raw IPC implementation is added
-    std::lock_guard<std::mutex> lock(mtx);
-    return 0;
-}
-
-// ── Stubbed setters (need raw IPC implementation) ──
-
-bool PctlManager::setRestrictionEnabled(bool enabled) {
-    std::lock_guard<std::mutex> lock(mtx);
-    if (!available) return false;
-
-    // Use raw IPC via serviceDispatch on IParentalControlService
-    // Cmd 2 = EnableRestriction, Cmd 3 = DisableRestriction
-    // Note: pctlGetServiceSession_Service() returns the underlying service handle
-    Service* srv = pctlGetServiceSession_Service();
-    if (!srv) return false;
-
-    u32 cmdId = enabled ? 2 : 3;
-    Result rc = serviceDispatch(srv, cmdId);
-
-    if (R_SUCCEEDED(rc)) {
-        cachedSettings.restriction_enabled = enabled;
-    }
-    return R_SUCCEEDED(rc);
+    // Stub: real implementation needs raw IPC (GetPlayTimerSettings cmd)
+    return 0;  // 0 = unlimited
 }
 
 bool PctlManager::setPlayTimerMinutes(int minutes) {
-    // Play timer settings require raw IPC (cmd 1000+ range)
-    // Stub: not yet implemented
+    (void)minutes;
+    // Stub
     return false;
 }
 
-bool PctlManager::showPin() {
-    std::lock_guard<std::mutex> lock(mtx);
-    if (!available) return false;
-
-    // PIN display uses system applet launch via appletRequestLaunch
-    // This requires knowing the PIN viewer applet ID
-    // Stub: not yet implemented properly
-    // For now, try libnx's pctlShowPin if it exists (it might in newer libnx)
-    // If it doesn't exist, the linker will fail and we'll handle it
+bool PctlManager::requestPinChange() {
+    // Stub: needs raw IPC (RequestPinChange cmd)
     return false;
 }
 
-bool PctlManager::deleteConfig() {
-    // Requires raw IPC
-    // Stub: not yet implemented
+bool PctlManager::requestDeleteRestriction() {
+    // Stub: needs raw IPC (RequestDeleteRestriction cmd)
     return false;
 }

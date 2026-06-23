@@ -1,51 +1,39 @@
 #pragma once
 
-#include <switch.h>
+#include <pctl.h>
 #include <mutex>
-#include <string>
 
-// PctlRestrictionSettings is defined in libnx pctl.h:
-//   u8 rating_age; bool sns_post_restriction; bool free_communication_restriction;
-
-// Our extended settings struct (parsed from service data)
-struct PlayTimerSettings {
-    bool restriction_enabled = false;
-    u8   rating_age          = 0;
-    bool sns_restriction     = false;
-    bool free_comm_restriction = false;
-};
+// Matches libnx PctlSettings struct
+typedef struct {
+    bool restriction_enabled;
+    u8   rating_age;
+    u8   __reserved[7];
+} PctlRestrictionSettings;
 
 class PctlManager {
 public:
-    static PctlManager& getInstance() {
-        static PctlManager instance;
-        return instance;
-    }
+    static PctlManager& instance();
 
-    bool init();
-    bool isAvailable() const { return available; }
+    bool initialize();   // Call pctlInitialize()
+    void finalize();    // Call pctlExit()
+
+    bool isAvailable();
 
     // ── Status getters (using official libnx API) ──
     bool isRestrictionEnabled();
-    bool getCurrentSettings(PlayTimerSettings* settings);
     u8   getRatingAge();
-    int  getPlayTimerMinutes();
 
-    // ── Setters (require raw IPC — stubbed for now) ──
-    bool setRestrictionEnabled(bool enabled);   // needs raw IPC cmd 2/3
-    bool setPlayTimerMinutes(int minutes);      // needs raw IPC cmd 1000+
-    bool showPin();                             // needs raw IPC cmd 50+
-    bool deleteConfig();                        // needs raw IPC
+    // ── Stubs (real IPC to be implemented later) ──
+    int  getPlayTimerMinutes();      // stub → returns 0 (unlimited)
+    bool setPlayTimerMinutes(int minutes); // stub
+    bool requestPinChange();         // stub
+    bool requestDeleteRestriction(); // stub
 
 private:
-    PctlManager() = default;
-    ~PctlManager() = default;
-    PctlManager(const PctlManager&) = delete;
-    PctlManager& operator=(const PctlManager&) = delete;
+    PctlManager();
+    ~PctlManager();
 
-    bool available = false;
-    std::mutex mtx;
-
-    // Cached settings
-    PlayTimerSettings cachedSettings;
+    bool                   available;
+    PctlRestrictionSettings cachedSettings;
+    std::mutex             mtx;
 };
