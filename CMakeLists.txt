@@ -64,7 +64,10 @@ file(GLOB_RECURSE SOURCES "source/*.cpp")
 # Borealis Submodule
 #===============================================================================
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/externals/borealis/CMakeLists.txt")
-    message(WARNING "Borealis submodule not found. Please run: git submodule update --init --recursive")
+    message(FATAL_ERROR
+      "Borealis not found at externals/borealis. "
+      "Run: git clone --depth 1 --branch main https://github.com/xfangfang/borealis.git externals/borealis"
+    )
 endif()
 
 add_subdirectory(externals/borealis)

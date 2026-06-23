@@ -12,18 +12,18 @@ jobs:
     container: devkitpro/devkita64:latest
 
     steps:
-    - name: Checkout repo
+    - name: Checkout repo (no submodule)
       uses: actions/checkout@v4
       with:
-        submodules: recursive
+        submodules: false
         fetch-depth: 0
 
-    - name: Fix safe.directory + ensure borealis submodule
+    - name: Fix safe.directory + clone borealis manually
       run: |
         git config --global --add safe.directory /__w/switch-pctl-gui/switch-pctl-gui
-        git submodule sync --recursive
-        git submodule update --init --recursive
-        ls externals/borealis/CMakeLists.txt || echo "WARNING: borealis still missing"
+        # Clone borealis directly (skip submodule machinery)
+        git clone --depth 1 --branch main https://github.com/xfangfang/borealis.git externals/borealis
+        ls externals/borealis/CMakeLists.txt
 
     - name: Install CMake + make
       run: |
@@ -32,16 +32,12 @@ jobs:
         cmake --version
         make --version
 
-    - name: Find toolchain
-      run: |
-        TOOLCHAIN=$(find /opt -name "devkitA64.cmake" -o -name "DevkitA64Libnx.cmake" 2>/dev/null | head -1)
-        echo "TOOLCHAIN=${TOOLCHAIN}" >> $GITHUB_ENV
-        echo "Found toolchain: ${TOOLCHAIN}"
-
     - name: Configure
       run: |
+        TOOLCHAIN=$(find /opt -name "devkitA64.cmake" 2>/dev/null | head -1)
+        echo "Toolchain: ${TOOLCHAIN}"
         cmake -B build \
-          -DCMAKE_TOOLCHAIN_FILE="${{ env.TOOLCHAIN }}" \
+          -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" \
           -DCMAKE_BUILD_TYPE=Release \
           -G "Unix Makefiles"
 
