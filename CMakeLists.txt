@@ -1,112 +1,81 @@
 cmake_minimum_required(VERSION 3.15)
-project(switch-pctl-gui LANGUAGES C CXX)
 
 #===============================================================================
-# devkitPro Toolchain
-#   - 优先使用 CMAKE_TOOLCHAIN_FILE（由命令行 -D 传入）
-#   - 回退到 DEVKITPRO 环境变量
+# Borealis cmake modules — MUST be included before project()
+# These define PLATFORM_SWITCH etc. and set up the toolchain
 #===============================================================================
-if(CMAKE_TOOLCHAIN_FILE)
-    message(STATUS "Using toolchain: ${CMAKE_TOOLCHAIN_FILE}")
-elseif(DEFINED ENV{DEVKITPRO})
-    set(DEVKITPRO_ENV $ENV{DEVKITPRO})
-    # 尝试常见文件名
-    foreach(_fn DevkitA64Libnx.cmake devkitA64.cmake)
-        set(_path "${DEVKITPRO_ENV}/cmake/${_fn}")
-        if(EXISTS "${_path}")
-            set(CMAKE_TOOLCHAIN_FILE "${_path}")
-            break()
-        endif()
-    endforeach()
-    if(NOT CMAKE_TOOLCHAIN_FILE)
-        message(FATAL_ERROR "Cannot find devkitPro toolchain in ${DEVKITPRO_ENV}/cmake/")
-    endif()
-    message(STATUS "Auto-detected toolchain: ${CMAKE_TOOLCHAIN_FILE}")
-    include(${CMAKE_TOOLCHAIN_FILE})
-else()
-    message(FATAL_ERROR "Please set DEVKITPRO env var or pass -DCMAKE_TOOLCHAIN_FILE=...")
+set(BOREALIS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/externals/borealis/library)
+
+if(NOT EXISTS "${BOREALIS_LIBRARY}/cmake/commonOption.cmake")
+    message(FATAL_ERROR
+        "Borealis not found. Please checkout borealis (wiliwili branch) to externals/borealis.\n"
+        "  actions/checkout@v4 with: repository=xfangfang/borealis ref=wiliwili path=externals/borealis submodules=recursive"
+    )
 endif()
 
+include(${BOREALIS_LIBRARY}/cmake/commonOption.cmake)
+include(${BOREALIS_LIBRARY}/cmake/toolchain.cmake)
+
 #===============================================================================
-# C++ Standard
+# Project
 #===============================================================================
+project(switch-pctl-gui LANGUAGES C CXX)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 #===============================================================================
-# Build Type
+# Project metadata (for NRO generation)
 #===============================================================================
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build" FORCE)
-endif()
+set(VERSION_MAJOR "1")
+set(VERSION_MINOR "0")
+set(VERSION_ALTER "0")
+set(PROJECT_AUTHOR "switch-pctl-gui")
+set(PSN_TITLE_ID  "010000000000BD23")
+set(PROJECT_ICON  ${CMAKE_SOURCE_DIR}/icon.jpg)
+set(PROJECT_RESOURCES ${CMAKE_SOURCE_DIR}/romfs)
 
 #===============================================================================
-# Global Compiler Flags
+# Borealis library
 #===============================================================================
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+add_subdirectory(${BOREALIS_LIBRARY})
+
+find_package(Threads REQUIRED)
+list(APPEND APP_PLATFORM_LIB ${CMAKE_THREAD_LIBS_INIT})
 
 #===============================================================================
-# Include Directories
-#===============================================================================
-include_directories(include)
-if(EXISTS "${CMAKE_SOURCE_DIR}/externals/borealis/include")
-    include_directories(externals/borealis/include)
-endif()
-
-#===============================================================================
-# Source Files
+# Our source files
 #===============================================================================
 file(GLOB_RECURSE SOURCES "source/*.cpp")
 
+# Switch-specific wrapper (required by borealis on Switch)
+if(PLATFORM_SWITCH)
+    list(APPEND SOURCES ${BOREALIS_LIBRARY}/lib/platforms/switch/switch_wrapper.c)
+endif()
+
 #===============================================================================
-# Borealis Submodule
+# Executable — use borealis's program_target()
 #===============================================================================
-if(NOT EXISTS "${CMAKE_SOURCE_DIR}/externals/borealis/CMakeLists.txt")
-    message(FATAL_ERROR
-      "Borealis not found at externals/borealis. "
-      "Run: actions/checkout@v4 with repository=xfangfang/borealis ref=wiliwili path=externals/borealis"
+program_target(${PROJECT_NAME} "${SOURCES}")
+target_include_directories(${PROJECT_NAME} PRIVATE include)
+set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
+target_link_libraries(${PROJECT_NAME} PRIVATE borealis ${APP_PLATFORM_LIB})
+
+#===============================================================================
+# NRO generation (Switch only)
+#===============================================================================
+if(PLATFORM_SWITCH)
+    add_custom_target(${PROJECT_NAME}.nro
+        DEPENDS ${PROJECT_NAME}
+        COMMAND ${NX_NACPTOOL_EXE} --create ${PROJECT_NAME} ${PROJECT_AUTHOR}
+            ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_ALTER}
+            ${PROJECT_NAME}.nacp --titleid=${PSN_TITLE_ID}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${PROJECT_RESOURCES} ${CMAKE_BINARY_DIR}/resources
+        COMMAND ${NX_ELF2NRO_EXE} ${PROJECT_NAME}.elf ${PROJECT_NAME}.nro
+            --icon=${PROJECT_ICON}
+            --nacp=${PROJECT_NAME}.nacp
+            --romfsdir=${CMAKE_BINARY_DIR}/resources
     )
 endif()
-
-add_subdirectory(externals/borealis)
-
-#===============================================================================
-# ROMFS
-#===============================================================================
-if(EXISTS "${CMAKE_SOURCE_DIR}/romfs")
-    add_custom_target(
-        romfs ALL
-        COMMAND ${DEVKITPRO}/tools/romfs-tool -c ${CMAKE_SOURCE_DIR}/romfs -o ${CMAKE_BINARY_DIR}/romfs.o
-        DEPENDS ${CMAKE_SOURCE_DIR}/romfs
-        COMMENT "Packing ROMFS"
-    )
-    set(ROMFS_TARGET romfs)
-endif()
-
-#===============================================================================
-# Executable
-#===============================================================================
-add_executable(${PROJECT_NAME} ${SOURCES})
-
-target_link_libraries(${PROJECT_NAME} borealis)
-
-if(ROMFS_TARGET)
-    add_dependencies(${PROJECT_NAME} ${ROMFS_TARGET})
-    target_link_options(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/romfs.o)
-endif()
-
-#===============================================================================
-# Post-build: strip + generate NRO/NPDM
-#===============================================================================
-add_custom_command(
-    TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_STRIP} $<TARGET_FILE:${PROJECT_NAME}>
-    COMMAND ${DEVKITPRO}/tools/elf2nro
-        $<TARGET_FILE:${PROJECT_NAME}>
-        ${CMAKE_BINARY_DIR}/${PROJECT_NAME}.nro
-        --icon=${CMAKE_SOURCE_DIR}/icon.jpg
-        --name=${PROJECT_NAME}
-    COMMENT "Generating NRO"
-)

@@ -18,7 +18,7 @@ jobs:
     - name: Checkout project
       uses: actions/checkout@v4
 
-    - name: Checkout borealis (wiliwili branch)
+    - name: Checkout borealis (wiliwili branch, with submodules)
       uses: actions/checkout@v4
       with:
         repository: xfangfang/borealis
@@ -26,8 +26,17 @@ jobs:
         path: externals/borealis
         submodules: recursive
 
-    - name: Verify borealis
-      run: ls externals/borealis/CMakeLists.txt && echo "borealis OK"
+    - name: Verify dependencies
+      run: |
+        echo "=== borealis ==="
+        ls externals/borealis/CMakeLists.txt && echo "OK: borealis top-level"
+        ls externals/borealis/library/CMakeLists.txt && echo "OK: borealis library"
+        ls externals/borealis/library/cmake/commonOption.cmake && echo "OK: commonOption"
+        ls externals/borealis/library/cmake/toolchain.cmake && echo "OK: toolchain"
+        echo "=== Switch.cmake ==="
+        ls /opt/devkitpro/cmake/Switch.cmake && echo "OK: Switch.cmake"
+        echo "=== icon ==="
+        ls icon.jpg && echo "OK: icon.jpg"
 
     - name: Install CMake + make
       run: |
@@ -36,15 +45,15 @@ jobs:
         cmake --version
 
     - name: Configure
-      run: |
-        TOOLCHAIN=$(find /opt -name "devkitA64.cmake" 2>/dev/null | head -1)
-        echo "Toolchain: ${TOOLCHAIN}"
-        cmake -B build \
-          -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" \
-          -DCMAKE_BUILD_TYPE=Release
+      run: cmake -B build -DPLATFORM_SWITCH=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)
+
+    - name: Verify NRO
+      run: |
+        ls build/switch-pctl-gui.nro && echo "NRO built successfully"
+        ls build/switch-pctl-gui.elf && echo "ELF built successfully"
 
     - name: Upload NRO
       uses: actions/upload-artifact@v4
