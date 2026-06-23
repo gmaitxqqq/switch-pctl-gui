@@ -18,8 +18,9 @@ jobs:
         submodules: recursive
         fetch-depth: 0
 
-    - name: Ensure borealis submodule
+    - name: Fix safe.directory + ensure borealis submodule
       run: |
+        git config --global --add safe.directory /__w/switch-pctl-gui/switch-pctl-gui
         git submodule sync --recursive
         git submodule update --init --recursive
         ls externals/borealis/CMakeLists.txt || echo "WARNING: borealis still missing"
