@@ -50,6 +50,9 @@ jobs:
           cat .gitmodules 2>/dev/null || echo "No .gitmodules"
           ls externals/borealis/CMakeLists.txt 2>/dev/null || echo "borealis submodule NOT initialized"
 
+      - name: Fix Git safe.directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Initialize submodules (force)
         run: |
           git submodule sync --recursive
